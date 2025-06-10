@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>7x7 Connect the Dots</title>
+    <style>
+        :root {
+            --grid-size: 7; 
+            --dot-size: 18px;
+            --gap-size: 45px;
+            --dot-color: #95a5a6;
+            --path-color: #e74c3c;
+            --possible-move-color: #3498db;
+            --fail-color: #c0392b;
+            --success-color: #27ae60;
+            --line-width: 4px;
+            --container-width: calc(var(--grid-size) * var(--dot-size) + (var(--grid-size) - 1) * var(--gap-size));
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #ecf0f1; -webkit-user-select: none; user-select: none; }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 25px; }
+        #puzzle-wrapper { position: relative; width: var(--container-width); height: var(--container-width); }
+        #puzzle-grid { display: grid; grid-template-columns: repeat(var(--grid-size), 1fr); grid-template-rows: repeat(var(--grid-size), 1fr); width: 100%; height: 100%; position: relative; z-index: 2; }
+        #line-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        .dot { width: var(--dot-size); height: var(--dot-size); background-color: var(--dot-color); border-radius: 50%; margin: auto; cursor: pointer; transition: all 0.15s ease; }
+        .dot.path-dot { background-color: var(--path-color); transform: scale(1.2); cursor: not-allowed; }
+        .dot.possible-move { background-color: var(--possible-move-color); transform: scale(1.4); box-shadow: 0 0 12px var(--possible-move-color); }
+        .line-user { stroke: var(--path-color); stroke-width: var(--line-width); fill: none; stroke-linejoin: round; stroke-linecap: round; }
+        .controls { margin-top: 25px; }
+        button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; margin: 0 10px; background-color: #bdc3c7; color: #2c3e50; transition: background-color 0.2s; font-weight: bold; }
+        button:hover { background-color: #95a5a6; }
+        #btn-undo { background-color: #f39c12; }
+        #btn-undo:hover { background-color: #d35400; }
+        #status { margin-top: 25px; font-size: 1.2em; font-weight: bold; height: 25px; text-align: center; }
+        .menu-link { margin-top: 20px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>7x7 Connect the Dots</h1>
+    
+    <div id="puzzle-wrapper"> <svg id="line-canvas"></svg> <div id="puzzle-grid"></div> </div>
+    
+    <p id="status"></p>
+
+    <div class="controls">
+        <button id="btn-undo">Back</button>
+        <button id="btn-reset">Reset</button>
+    </div>
+
+    <a href="index.html" class="menu-link">Back to Menu</a>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const gridContainer = document.getElementById('puzzle-grid');
+            const lineCanvas = document.getElementById('line-canvas');
+            const statusEl = document.getElementById('status');
+            const resetButton = document.getElementById('btn-reset');
+            const undoButton = document.getElementById('btn-undo');
+
+            const gridSize = 7;
+            const totalDots = gridSize * gridSize;
+            let dots = [];
+            let currentPath = [];
+            let gameActive = true;
+            
+            function getVector(dot1, dot2) { return { dx: parseInt(dot2.dataset.col) - parseInt(dot1.dataset.col), dy: parseInt(dot2.dataset.row) - parseInt(dot1.dataset.row) }; }
+            function isValidMove(lastDot, newDot) { if (currentPath.length < 2) return true; const prevDot = currentPath[currentPath.length - 2]; const lastVec = getVector(prevDot, lastDot); const newVec = getVector(lastDot, newDot); if (newVec.dx === lastVec.dx && newVec.dy === lastVec.dy) return true; const wasDiagonal = Math.abs(lastVec.dx) === 1 && Math.abs(lastVec.dy) === 1; const wasStraight = Math.abs(lastVec.dx) + Math.abs(lastVec.dy) === 1; if (wasDiagonal) { const isNowStraight = Math.abs(newVec.dx) + Math.abs(newVec.dy) === 1; if (!isNowStraight) return false; const validTurn1 = (newVec.dx === 0 && newVec.dy === -lastVec.dy); const validTurn2 = (newVec.dx === -lastVec.dx && newVec.dy === 0); return validTurn1 || validTurn2; } if (wasStraight) { const isNowDiagonal = Math.abs(newVec.dx) === 1 && Math.abs(newVec.dy) === 1; if (!isNowDiagonal) return false; if (lastVec.dx !== 0) { return newVec.dx === -lastVec.dx; } else { return newVec.dy === -lastVec.dy; } } return false; }
+            function initGrid() { gridContainer.innerHTML = ''; dots = []; for (let row = 0; row < gridSize; row++) { for (let col = 0; col < gridSize; col++) { const dot = document.createElement('div'); dot.className = 'dot'; dot.dataset.row = row; dot.dataset.col = col; dot.addEventListener('click', handleDotClick); gridContainer.appendChild(dot); dots.push(dot); } } }
+            function handleDotClick(e) { if (!gameActive) return; const clickedDot = e.target; if (currentPath.length === 0) { addDotToPath(clickedDot); highlightNextMoves(); return; } if (clickedDot.classList.contains('possible-move')) { addDotToPath(clickedDot); if (currentPath.length === totalDots) { endGame(true); } else if (!highlightNextMoves()) { endGame(false); } } }
+            function undoLastMove() { if (currentPath.length <= 1) { resetGame(); return; } const undoneDot = currentPath.pop(); undoneDot.className = 'dot'; gameActive = true; drawLines(); updateStatus(); highlightNextMoves(); }
+            function addDotToPath(dot) { dot.classList.add('path-dot'); dot.classList.remove('possible-move'); currentPath.push(dot); drawLines(); updateStatus(); }
+            function highlightNextMoves() { dots.forEach(d => d.classList.remove('possible-move')); if (currentPath.length === 0) return true; const lastDot = currentPath[currentPath.length - 1]; let possibleMovesCount = 0; dots.forEach(potentialNextDot => { if (isDotInPath(potentialNextDot) || !isAdjacent(lastDot, potentialNextDot)) return; if (isValidMove(lastDot, potentialNextDot) && !isCrossing(lastDot, potentialNextDot)) { potentialNextDot.classList.add('possible-move'); possibleMovesCount++; } }); return possibleMovesCount > 0; }
+            function isCrossing(dotA, dotB) { if (currentPath.length < 2) return false; const vec = getVector(dotA, dotB); if (Math.abs(vec.dx) !== 1 || Math.abs(vec.dy) !== 1) return false; const dotC = findDot(dotA.dataset.row, dotB.dataset.col); const dotD = findDot(dotB.dataset.row, dotA.dataset.col); if (!dotC || !dotD) return false; for (let i = 0; i < currentPath.length - 1; i++) { const p1 = currentPath[i], p2 = currentPath[i + 1]; if ((p1 === dotC && p2 === dotD) || (p1 === dotD && p2 === dotC)) { return true; } } return false; }
+            function findDot(row, col) { return dots.find(d => d.dataset.row == row && d.dataset.col == col); }
+            function updateStatus() { if (currentPath.length > 0) { const remaining = totalDots - currentPath.length; if (remaining > 0) { statusEl.textContent = `${remaining} / ${totalDots} dots are missing`; statusEl.style.color = '#7f8c8d'; } } else { statusEl.textContent = ''; } }
+            function endGame(isWin) { gameActive = false; dots.forEach(d => d.classList.remove('possible-move')); if (isWin) { statusEl.textContent = `Congratulations! You connected all ${totalDots} dots!`; statusEl.style.color = 'var(--success-color)'; } else { const remaining = totalDots - currentPath.length; statusEl.textContent = `You're stuck! ${remaining} dots were missed.`; statusEl.style.color = 'var(--fail-color)'; } }
+            function isAdjacent(dot1, dot2) { const vec = getVector(dot1, dot2); return Math.abs(vec.dx) <= 1 && Math.abs(vec.dy) <= 1 && (vec.dx !== 0 || vec.dy !== 0); }
+            function isDotInPath(dot) { return currentPath.includes(dot); }
+            function drawLines() { lineCanvas.innerHTML = ''; if (currentPath.length < 2) return; const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline'); polyline.classList.add('line-user'); const points = currentPath.map(dot => `${dot.offsetLeft + dot.offsetWidth / 2},${dot.offsetTop + dot.offsetHeight / 2}`).join(' '); polyline.setAttribute('points', points); lineCanvas.appendChild(polyline); }
+            function resetGame() { gameActive = true; currentPath = []; dots.forEach(d => d.className = 'dot'); lineCanvas.innerHTML = ''; updateStatus(); }
+            
+            resetButton.addEventListener('click', resetGame);
+            undoButton.addEventListener('click', undoLastMove);
+            initGrid();
+        });
+    </script>
+</body>
+</html>
